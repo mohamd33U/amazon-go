@@ -5,7 +5,8 @@ from sort import Sort
 import numpy as np
 import face_recognition as fr
 import pickle
-cap = cv.VideoCapture("summation/test4.mp4")
+
+cap = cv.VideoCapture("summation/faces.mp4")
 model = YOLO("yolov8n.pt")
 tracker = Sort()  # Initialize the SORT tracker
 
@@ -19,8 +20,6 @@ classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'trai
               'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
               'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
               'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
-
-
 
 output_file = 'output_video.avi'
 fourcc = cv.VideoWriter_fourcc(*'XVID')
@@ -38,15 +37,7 @@ while True:
     ret, frame = cap.read()
     if not ret:
         break
-    face_locations = fr.face_locations(frame)
-    encodecurframe=fr.face_encodings(frame,face_locations)
-    for ecface , facelc in zip(encodecurframe,face_locations):
-        matches=fr.compare_faces(encodelistknew,ecface)
-        facedis = fr.face_distance(encodelistknew, ecface)
-        indix=np.argmin(facedis)
-        if matches[indix]:
-            for (top, right, bottom, left) in face_locations:
-                cv.rectangle(frame, (left, top), (right, bottom), (255, 255, 255), 2)
+
     results = model(frame)
 
     detections = []
@@ -66,16 +57,29 @@ while True:
         detections = np.array(detections)  # Convert to NumPy array
         tracked_objects = tracker.update(detections)  # Update the tracker with detections
         for obj in tracked_objects:
+            x1, y1, x2, y2, obj_id = map(int, obj)
+            face_locations = fr.face_locations(frame)
+            encodecurframe = fr.face_encodings(frame, face_locations)
 
+            for ecface, facelc in zip(encodecurframe, face_locations):
+                matches = fr.compare_faces(encodelistknew, ecface)
+                facedis = fr.face_distance(encodelistknew, ecface)
+                indix = np.argmin(facedis)
 
+                # Unpacking the face location coordinates (top, right, bottom, left)
+                top, right, bottom, left = facelc  # Make sure facelc is correctly unpacked here
 
-            x1, y1, x2, y2, obj_id = map(int, obj)  # Extract coordinates and ID
-            for (top, right, bottom, left) in face_locations:
-                cv.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
-                    cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)  #
-                    cv.putText(frame, f"ID: {obj_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
+                if matches[indix]:
+                    # Ensure that left, top, right, bottom are defined within this scope
+                    if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
+                        cv.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                        cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv.putText(frame, f"ID: {obj_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                else:
+                    if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
+                        cv.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
+                        cv.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        cv.putText(frame, f"ID: {obj_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
     out.write(frame)
 
