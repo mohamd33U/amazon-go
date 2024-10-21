@@ -135,3 +135,4 @@ while True:
 
 cap.release()
 cv.destroyAllWindows()
+print("finsh")
