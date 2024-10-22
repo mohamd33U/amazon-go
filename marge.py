@@ -6,14 +6,14 @@ import numpy as np
 import face_recognition as fr
 import pickle
 import mediapipe as mp
-
-cap = cv.VideoCapture(0)
+bank={}
+cap = cv.VideoCapture("summation/my.mp4")
 model = YOLO("models/yolov8n.pt")
 tracker = Sort()  # Initialize the SORT tracker
 tracker_phone = Sort()  # Initialize the SORT tracker
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands()
-bowl_position = (300, 300, 700, 700)  # Example coordinates for the bowl
+bowl_position = (100,400, 700, 700)  # Example coordinates for the bowl
 
 classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
               'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
@@ -26,7 +26,7 @@ classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'trai
               'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
               'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
-output_file = 'output_video.avi'
+output_file = 'output_video/output_video.avi'
 fourcc = cv.VideoWriter_fourcc(*'XVID')
 fps = 20.0
 frame_width = int(cap.get(3))  #
@@ -54,27 +54,34 @@ while True:
             conf = math.ceil((box.conf[0] * 100)) / 100
             cls = int(box.cls[0])
             clss = classnames[cls]
-            if clss=='cell phone':
+            if clss=='cat' and conf >=0.30 :
                 detections_phone.append([x1, y1, x2, y2, conf])
-                if (x1 >= bowl_position[0] and y1 >= bowl_position[1] and
-                        x2 <= bowl_position[2] and y2 <= bowl_position[3]):
-                    cv.putText(frame, 'Phone inside bowl!', (50, 150), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-
-            if clss == "person":
+                # if (x1 >= bowl_position[0] and y1 >= bowl_position[1] and
+                #         x2 <= bowl_position[2] and y2 <= bowl_position[3]):
+                #     cv.putText(frame, 'cat inside shopping cart!', (50, 150), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                #     bank.append("cat")
+            if clss == "person" and conf>=0.60:
                 detections.append([x1, y1, x2, y2, conf])  # Append detections for tracking
 
 
 
     cv.rectangle(frame, (bowl_position[0], bowl_position[1]), (bowl_position[2], bowl_position[3]), (255, 0, 255), 2)
-    cv.putText(frame, 'Bowl', (bowl_position[0], bowl_position[1] - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255),
+    cv.putText(frame, 'shopping cart', (bowl_position[0], bowl_position[1] - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255),
                 2)
     if detections_phone:
         detections_phone = np.array(detections_phone)  # Convert to NumPy array
         tracked_phone = tracker_phone.update(detections_phone)
         for objf in tracked_phone:
             x1, y1, x2, y2, obj_id_f = map(int, objf)
-            cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv.putText(frame, f"ID: celll{obj_id_f}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
+            cv.putText(frame, f"ID: {obj_id_f}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
+            if (x1 >= bowl_position[0] and y1 >= bowl_position[1] and
+                    x2 <= bowl_position[2] and y2 <= bowl_position[3]):
+                cv.putText(frame, 'cat inside shopping cart!', (50, 150), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                if obj_id_f not in bank:
+                    bank[obj_id_f] = []
+                bank[obj_id_f].append('cat')
+
     frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
     results_hands = hands.process(frame_rgb)
     if results_hands.multi_hand_landmarks:
@@ -94,9 +101,9 @@ while True:
             # Check if hand is close to detected phones
             for (x1, y1, x2, y2, conf) in detections_phone:
                 if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                    cv.putText(frame, 'Hand close to phone!', (50, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    cv.putText(frame, 'Hand close to cat!', (50, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 if (index_finger_x > x1 and index_finger_x < x2) and (index_finger_y > y1 and index_finger_y < y2):
-                    cv.putText(frame, 'Taking the phone!', (50, 100), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    cv.putText(frame, 'Taking the cat!', (50, 100), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     if detections:
         detections = np.array(detections)  # Convert to NumPy array
@@ -117,8 +124,8 @@ while True:
                 if matches[indix]:
                     # Ensure that left, top, right, bottom are defined within this scope
                     if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
-                        cv.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                        cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv.rectangle(frame, (left, top), (right, bottom), (0, 255,0), 2)
+                        cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255,0), 2)
                         cv.putText(frame, f"ID: {obj_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 else:
                     if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
@@ -128,11 +135,17 @@ while True:
 
     out.write(frame)
 
-    cv.imshow("frame", frame)
-
-    if cv.waitKey(1) & 0xFF == ord('q'):
-        break
+    # cv.imshow("frame", frame)
+    #
+    # if cv.waitKey(1) & 0xFF == ord('q'):
+    #     break
 
 cap.release()
 cv.destroyAllWindows()
-print("finsh")
+print(bank)
+for item, value_list in bank.items():  # value_list is the list associated with each key
+    total_price = 0  # Initialize total price for each item
+    for value in value_list:  # Iterate over each element in the list
+        if value == "cat":
+            total_price += 3  # Add 3 for each "cat"
+    print(f"professeur {item} total_price {total_price} $")
