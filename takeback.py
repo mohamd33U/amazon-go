@@ -10,16 +10,17 @@ import csv
 import os
 #####
 # File name
-filename = 'transactions.csv'
-# Create CSV file if it doesn't exist
-if not os.path.isfile(filename):
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        # Write the headers
-        writer.writerow(["CustomerID", "ProductIDs", "TotalPrice"])
-import csv
 
-def add_transaction(customer_id, product_ids):
+filename = 'transactions.csv'
+
+
+def add_transaction(customer_id, product_take_ids=None, product_returning_ids=None):
+    if product_take_ids is None:
+        product_take_ids = []
+    if product_returning_ids is None:
+        product_returning_ids = []
+
+    # Example product prices
     product_prices = {
         'cell phone': 1.00,
         'banana': 0.50,
@@ -28,41 +29,91 @@ def add_transaction(customer_id, product_ids):
         'hot dog': 1.50
     }
 
+    # Create a dictionary to count final products
+    final_product_counts = {}
+
+    # Count taken products
+    for product in product_take_ids:
+        final_product_counts[product] = final_product_counts.get(product, 0) + 1
+
+    # Subtract returned products
+    for product in product_returning_ids:
+        if product in final_product_counts:
+            final_product_counts[product] -= 1
+            if final_product_counts[product] <= 0:
+                del final_product_counts[product]
+
+    # Prepare the final products and total price calculation
+    endproud_ids = list(final_product_counts.keys())
+    total_price = sum(product_prices.get(product, 0) * final_product_counts[product] for product in endproud_ids)
+
     existing_transactions = []
 
-    with open(filename, mode='r') as file:
-        reader = csv.reader(file)
-        header = next(reader)  # قراءة العنوان
-        for row in reader:
-            existing_transactions.append(row)
+    # Check if the file exists and is not empty
+    if os.path.exists(filename) and os.path.getsize(filename) > 0:
+        with open(filename, mode='r', newline='') as file:
+            reader = csv.reader(file)
+            header = next(reader)  # Read header
+            for row in reader:
+                existing_transactions.append(row)
+    else:
+        # If the file does not exist or is empty, create the header
+        header = ['Customer ID', 'Products Taken', 'Products Returned', 'Final Products', 'Total Price']
 
     found = False
     for i, row in enumerate(existing_transactions):
         if row[0] == customer_id:
             found = True
-            current_product_ids = row[1].split(', ')
+            current_take_ids = row[1].split(', ') if row[1] else []
+            current_return_ids = row[2].split(', ') if row[2] else []
+            current_end_ids = row[3].split(', ') if row[3] else []
 
-            current_product_ids.extend(product_ids)
+            # Update taken, returned, and final product counts
+            for product in product_take_ids:
+                current_take_ids.append(product)
+                final_product_counts[product] = final_product_counts.get(product, 0) + 1
 
-            total_price = sum(product_prices[product] for product in current_product_ids if product in product_prices)
+            for product in product_returning_ids:
+                current_return_ids.append(product)
+                if product in final_product_counts:
+                    final_product_counts[product] -= 1
+                    if final_product_counts[product] <= 0:
+                        del final_product_counts[product]
 
-            existing_transactions[i][1] = ', '.join(current_product_ids)  # تحديث قائمة المنتجات
-            existing_transactions[i][2] = total_price  # تحديث السعر الإجمالي
+            current_end_ids = list(final_product_counts.keys())
+
+            # Calculate total price based on the updated current_end_ids
+            total_price = sum(
+                product_prices.get(product, 0) * final_product_counts[product] for product in current_end_ids)
+
+            # Update the row with new data
+            existing_transactions[i][1] = ', '.join(current_take_ids)
+            existing_transactions[i][2] = ', '.join(current_return_ids)
+            existing_transactions[i][3] = ', '.join(current_end_ids)
+            existing_transactions[i][4] = f"{total_price:.2f}"  # Update total price
             break
 
     if not found:
-        total_price = sum(product_prices[product] for product in product_ids if product in product_prices)  # حساب السعر الإجمالي للسجل الجديد
-        existing_transactions.append([customer_id, ', '.join(product_ids), total_price])
+        # If no existing transaction, create a new one
+        existing_transactions.append([
+            customer_id,
+            ', '.join(product_take_ids),
+            ', '.join(product_returning_ids),
+            ', '.join(endproud_ids),
+            f"{total_price:.2f}"
+        ])
 
+    # Write the updated transactions back to the CSV file
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(header)
         writer.writerows(existing_transactions)
 
-    print(f"Transaction added/updated: {customer_id}, Products: {', '.join(product_ids)}, Total Price: {total_price:.2f}")
-
+    print(f"Transaction added/updated: {customer_id}, Products Taken: {', '.join(product_take_ids)}, "
+          f"Products Returned: {', '.join(product_returning_ids)}, Final Products: {', '.join(endproud_ids)}, "
+          f"Total Price: {total_price:.2f}")
 ###
-cap = cv.VideoCapture("summation/kn.mp4")
+cap = cv.VideoCapture(0)
 model = YOLO("models/yolov8n.pt")
 tracker = Sort()  # Initialize the SORT tracker
 tracker_phone = Sort()
@@ -72,7 +123,13 @@ tracker_pizza = Sort()
 tracker_hotdog = Sort()
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands()
-# bowl_position = (100,200, 700, 700)  # Example coordinates for the bowl
+shelf_zones = [
+    [(50, 50), (300, 300)],
+    # [(75, 77),(229, 217)],  # المنطقة الأولى
+    # [(312, 76),(450, 227)], # المنطقة الثانية
+    # [(76, 307),(222, 451)], # المنطقة الرابعة
+    # [(307, 307),(450, 451)], # المنطقة الخامسة
+]
 
 classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
               'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
@@ -96,7 +153,26 @@ file = open("encoding/encodefile.p", "rb")
 knewandid = pickle.load(file)
 file.close()
 encodelistknew, clineIds = knewandid
-was_detected_ids = []
+tack_phone_detected_ids = []
+back_phone_detected_ids = []
+tack_banana_detected_ids = []
+back_banana_detected_ids = []
+tack_apple_detected_ids = []
+back_apple_detected_ids = []
+tack_pizza_detected_ids = []
+back_pizza_detected_ids = []
+tack_hotdog_detected_ids = []
+back_hotdog_detected_ids = []
+def is_in_shelf_zone(x, y, zones):
+    for i, zone in enumerate(zones):
+        if zone[0][0] <= x <= zone[1][0] and zone[0][1] <= y <= zone[1][1]:
+            return i + 1  # ترجع رقم المنطقة (1, 2, 3, ...)
+    return None
+phone_taken = False
+banana_taken = False
+apple_taken = False
+pizza_taken = False
+hotdog_taken = False
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -135,9 +211,6 @@ while True:
 
 
 
-    # cv.rectangle(frame, (bowl_position[0], bowl_position[1]), (bowl_position[2], bowl_position[3]), (255, 0, 255), 2)
-    # cv.putText(frame, 'shopping cart', (bowl_position[0], bowl_position[1] - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255),2)
-
 
 
     if detections:
@@ -165,70 +238,7 @@ while True:
                         cv.putText(frame, f"ID: {obj_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                         ##############################
 
-                        if detections_phone:
-                            detections_phone = np.array(detections_phone)  # Convert to NumPy array
-                            tracked_phone = tracker_phone.update(detections_phone)
-                            for objf in tracked_phone:
-                                x1, y1, x2, y2, obj_id_f = map(int, objf)
-                                cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
-                                cv.putText(frame, f"ID: {obj_id_f}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5,
-                                           (0, 165, 255), 2)
-                                # if (x1 >= bowl_position[0] and y1 >= bowl_position[1] and x2 <= bowl_position[
-                                #     2] and y2 <= bowl_position[3]):
-                                #     cv.putText(frame, 'Phone inside shopping cart!', (50, 150), cv.FONT_HERSHEY_SIMPLEX,
-                                #                1, (255, 0, 0), 2)
-                                #     if obj_id_f not in was_detected_ids:
-                                #         add_transaction(clineIds[indix], ['cell phone'])
-                                #         was_detected_ids.append(obj_id_f)
 
-                        if detections_banana:
-                            detections_banana = np.array(detections_banana)
-                            tracked_banana = tracker_banana.update(detections_banana)
-                            for objb in tracked_banana:
-                                x1, y1, x2, y2, obj_id_b = map(int, objb)
-                                cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
-                                cv.putText(frame, f"ID: {obj_id_b}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX,0.5,(0, 165, 255), 2)
-
-                                if obj_id_b not in was_detected_ids:
-                                    add_transaction(clineIds[indix], ['banana'])
-                                    was_detected_ids.append(obj_id_b)
-
-                        if detections_apple:
-                            detections_apple = np.array(detections_apple)
-                            tracked_apple = tracker_apple.update(detections_apple)
-                            for obja in tracked_apple:
-                                x1, y1, x2, y2, obj_id_a = map(int, obja)
-                                cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
-                                cv.putText(frame, f"ID: {obj_id_a}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
-
-                                if obj_id_a not in was_detected_ids:
-                                    add_transaction(clineIds[indix], ['apple'])
-                                    was_detected_ids.append(obj_id_a)
-
-                        if detections_pizza:
-                            detections_pizza = np.array(detections_pizza)
-                            tracked_pizza = tracker_pizza.update(detections_pizza)
-                            for objp in tracked_pizza:
-                                x1, y1, x2, y2, obj_id_p = map(int, objp)
-                                cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
-                                cv.putText(frame, f"ID: {obj_id_p}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5,(0, 165, 255), 2)
-                                if obj_id_p not in was_detected_ids:
-                                    add_transaction(clineIds[indix], ['pizza'])
-                                    was_detected_ids.append(obj_id_p)
-
-                        if detections_hotdog:
-                            detections_hotdog = np.array(detections_hotdog)
-                            tracked_hotdog = tracker_hotdog.update(detections_hotdog)
-                            for objh in tracked_hotdog:
-                                x1, y1, x2, y2, obj_id_h = map(int, objh)
-                                cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
-                                cv.putText(frame, f"ID: {obj_id_h}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX,0.5,(0, 165, 255), 2)
-                                if obj_id_h not in was_detected_ids:
-                                    add_transaction(clineIds[indix], ['hot dog'])
-                                    was_detected_ids.append(obj_id_h)
-
-
-                                    ##############################
 
                         frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
                         results_hands = hands.process(frame_rgb)
@@ -248,51 +258,181 @@ while True:
                                     cy = int(landmark.y * frame.shape[0])
                                     cv.circle(frame, (cx, cy), 5, (255, 0, 0), -1)
                                 ##############################
+                                if len(detections_phone)>0 :
+                                    detections_phone = np.array(detections_phone)  # Convert to NumPy array
+                                    tracked_phone = tracker_phone.update(detections_phone)
+                                    for objf in tracked_phone:
+                                        x1, y1, x2, y2, obj_id_f = map(int, objf)
+                                        cv.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
+                                        # cv.putText(frame, f"ID: {obj_id_f}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX,0.5,(0, 165, 255), 2)
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        shelf_zone_number = is_in_shelf_zone(center_x, center_y, shelf_zones)
+                                        if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
+                                            cv.putText(frame, 'Hand close to phone!', (50, 50),cv.FONT_HERSHEY_SIMPLEX, 1,(0, 0, 255), 2)
+                                        if (index_finger_x > x1 and index_finger_x < x2) and (
+                                                index_finger_y > y1 and index_finger_y < y2):
+                                            if shelf_zone_number is None:
+                                                cv.putText(frame, f"id {obj_id}:Taking the phone!", (50, 100),cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                                phone_taken = True
+                                                if obj_id_f not in tack_phone_detected_ids:
+                                                    add_transaction(clineIds[indix], ['cell phone'])
+                                                    tack_phone_detected_ids.append(obj_id_f)
+                                        if phone_taken and (wrist_x < x1 or wrist_x > x2 or wrist_y < y1 or wrist_y > y2):
+                                            if shelf_zone_number:
+                                                cv.putText(frame, f"id {obj_id}:Returning the banana!", (50, 150),
+                                                            cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                                phone_taken = False
+                                                if obj_id_f not in back_phone_detected_ids:
+                                                    add_transaction(clineIds[indix], product_returning_ids=['cell phone'])
+                                                    back_phone_detected_ids.append(obj_id_f)
 
-                                # Check if hand is close to detected phones
-                                for (x1, y1, x2, y2, conf) in detections_phone:
-                                    if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                                        cv.putText(frame, 'Hand close to cell phone!', (50, 50), cv.FONT_HERSHEY_SIMPLEX, 1,
-                                                   (0, 0, 255), 2)
-                                    if (index_finger_x > x1 and index_finger_x < x2) and (
-                                            index_finger_y > y1 and index_finger_y < y2):
-                                        cv.putText(frame, 'Taking the cell phone!', (50, 100), cv.FONT_HERSHEY_SIMPLEX, 1,
-                                                   (0, 0, 255), 2)
+                                        # if obj_id_f not in was_detected_ids:
+                                        #     add_transaction(clineIds[indix], ['cell phone'])
+                                        #     was_detected_ids.append(obj_id_f)
+
+                                if len(detections_banana)>0:
+                                    detections_banana = np.array(detections_banana)
+                                    tracked_banana = tracker_banana.update(detections_banana)
+                                    for objb in tracked_banana:
+                                        x1, y1, x2, y2, obj_id_b = map(int, objb)
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        shelf_zone_number = is_in_shelf_zone(center_x, center_y, shelf_zones)
+                                        if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
+                                            cv.putText(frame, 'Hand close to banana!', (50, 50), cv.FONT_HERSHEY_SIMPLEX,
+                                                       1, (0, 0, 255), 2)
+                                        if (index_finger_x > x1 and index_finger_x < x2) and (
+                                                index_finger_y > y1 and index_finger_y < y2):
+                                            if shelf_zone_number is None:
+                                                cv.putText(frame, f"id {obj_id}:Taking the banana!", (50, 100),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                                banana_taken= True
+                                                if obj_id_f not in tack_banana_detected_ids:
+                                                    add_transaction(clineIds[indix], ['banana'])
+                                                    tack_banana_detected_ids.append(obj_id_f)
+                                        if banana_taken and (
+                                                wrist_x < x1 or wrist_x > x2 or wrist_y < y1 or wrist_y > y2):
+                                            if shelf_zone_number:
+                                                cv.putText(frame, f"id {obj_id}:Returning the banana!", (50, 150),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                                banana_taken = False
+                                                if obj_id_f not in back_banana_detected_ids:
+                                                    add_transaction(clineIds[indix],product_returning_ids=['banana'])
+                                                    back_banana_detected_ids.append(obj_id_f)
+
+                                        # if obj_id_b not in was_detected_ids:
+                                        #     add_transaction(clineIds[indix], ['banana'])
+                                        #     was_detected_ids.append(obj_id_b)
+
+                                if len(detections_apple)>0:
+                                    detections_apple = np.array(detections_apple)
+                                    tracked_apple = tracker_apple.update(detections_apple)
+                                    for obja in tracked_apple:
+                                        x1, y1, x2, y2, obj_id_a = map(int, obja)
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        shelf_zone_number = is_in_shelf_zone(center_x, center_y, shelf_zones)
+                                        if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
+                                            cv.putText(frame, 'Hand close to apple!', (50, 50), cv.FONT_HERSHEY_SIMPLEX,
+                                                       1, (0, 0, 255), 2)
+                                        if (index_finger_x > x1 and index_finger_x < x2) and (
+                                                index_finger_y > y1 and index_finger_y < y2):
+                                            if shelf_zone_number is None:
+                                                cv.putText(frame, f"id {obj_id}:Taking the apple!", (50, 100),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                                apple_taken= True
+                                                if obj_id_f not in tack_apple_detected_ids:
+                                                    add_transaction(clineIds[indix], ['apple'])
+                                                    tack_apple_detected_ids.append(obj_id_f)
+                                        if apple_taken and (
+                                                wrist_x < x1 or wrist_x > x2 or wrist_y < y1 or wrist_y > y2):
+                                            if shelf_zone_number:
+                                                cv.putText(frame, f"id {obj_id}:Returning the apple!", (50, 150),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                                apple_taken = False
+                                                if obj_id_f not in back_apple_detected_ids:
+                                                    add_transaction(clineIds[indix],
+                                                                    product_returning_ids=['apple'])
+                                                    back_apple_detected_ids.append(obj_id_f)
+
+                                        # if obj_id_a not in was_detected_ids:
+                                        #     add_transaction(clineIds[indix], ['apple'])
+                                        #     was_detected_ids.append(obj_id_a)
+
+                                if len(detections_pizza)>0:
+                                    detections_pizza = np.array(detections_pizza)
+                                    tracked_pizza = tracker_pizza.update(detections_pizza)
+                                    for objp in tracked_pizza:
+                                        x1, y1, x2, y2, obj_id_p = map(int, objp)
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        shelf_zone_number = is_in_shelf_zone(center_x, center_y, shelf_zones)
+                                        if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
+                                            cv.putText(frame, 'Hand close to pizza!', (50, 50), cv.FONT_HERSHEY_SIMPLEX,
+                                                       1, (0, 0, 255), 2)
+                                        if (index_finger_x > x1 and index_finger_x < x2) and (
+                                                index_finger_y > y1 and index_finger_y < y2):
+                                            if shelf_zone_number is None:
+                                                cv.putText(frame, f"id {obj_id}:Taking the pizza!", (50, 100),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                                pizza_taken= True
+                                                if obj_id_f not in tack_pizza_detected_ids:
+                                                    add_transaction(clineIds[indix], ['pizza'])
+                                                    tack_pizza_detected_ids.append(obj_id_f)
+                                        if pizza_taken and (
+                                                wrist_x < x1 or wrist_x > x2 or wrist_y < y1 or wrist_y > y2):
+                                            if shelf_zone_number:
+                                                cv.putText(frame, f"id {obj_id}:Returning the pizza", (50, 150),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                                pizza_taken = False
+                                                if obj_id_f not in back_pizza_detected_ids:
+                                                    add_transaction(clineIds[indix],
+                                                                    product_returning_ids=['pizza'])
+                                                    back_pizza_detected_ids.append(obj_id_f)
+
+                                        # if obj_id_p not in was_detected_ids:
+                                        #     add_transaction(clineIds[indix], ['pizza'])
+                                        #     was_detected_ids.append(obj_id_p)
+
+                                if len(detections_hotdog)>0:
+                                    detections_hotdog = np.array(detections_hotdog)
+                                    tracked_hotdog = tracker_hotdog.update(detections_hotdog)
+                                    for objh in tracked_hotdog:
+                                        x1, y1, x2, y2, obj_id_h = map(int, objh)
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        shelf_zone_number = is_in_shelf_zone(center_x, center_y, shelf_zones)
+                                        if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
+                                            cv.putText(frame, 'Hand close to hotdog!', (50, 50), cv.FONT_HERSHEY_SIMPLEX,
+                                                       1, (0, 0, 255), 2)
+                                        if (index_finger_x > x1 and index_finger_x < x2) and (
+                                                index_finger_y > y1 and index_finger_y < y2):
+                                            if shelf_zone_number is None:
+                                                cv.putText(frame, f"id {obj_id}:Taking the hotdog!", (50, 100),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                                                hotdog_taken= True
+                                                if obj_id_f not in tack_hotdog_detected_ids:
+                                                    add_transaction(clineIds[indix], ['hotdog'])
+                                                    tack_hotdog_detected_ids.append(obj_id_f)
+                                        if hotdog_taken and (
+                                                wrist_x < x1 or wrist_x > x2 or wrist_y < y1 or wrist_y > y2):
+                                            if shelf_zone_number:
+                                                cv.putText(frame, f"id {obj_id}:Returning the hotdog!", (50, 150),
+                                                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                                hotdog_taken = False
+                                                if obj_id_f not in back_hotdog_detected_ids:
+                                                    add_transaction(clineIds[indix],
+                                                                    product_returning_ids=['hotdog'])
+                                                    back_hotdog_detected_ids.append(obj_id_f)
+
+                                        # if obj_id_h not in was_detected_ids:
+                                        #     add_transaction(clineIds[indix], ['hot dog'])
+                                        #     was_detected_ids.append(obj_id_h)
+
+                                            ##############################
 
 
-                                for (x1, y1, x2, y2, conf) in detections_banana:
-                                    if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                                        cv.putText(frame, 'Hand close to banana!', (50, 50),cv.FONT_HERSHEY_SIMPLEX, 1,(0, 0, 255), 2)
-                                    if (index_finger_x > x1 and index_finger_x < x2) and (index_finger_y > y1 and index_finger_y < y2):
-                                            cv.putText(frame, 'Taking the banana!', (50, 100), cv.FONT_HERSHEY_SIMPLEX,1,(0, 0, 255), 2)
-
-
-                                for (x1, y1, x2, y2, conf) in detections_apple:
-                                    if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                                        cv.putText(frame, 'Hand close to apple!', (50, 50),
-                                                   cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                    if (index_finger_x > x1 and index_finger_x < x2) and (
-                                            index_finger_y > y1 and index_finger_y < y2):
-                                        cv.putText(frame, 'Taking the apple!', (50, 100), cv.FONT_HERSHEY_SIMPLEX,1, (0, 0, 255), 2)
-
-                                for (x1, y1, x2, y2, conf) in detections_pizza:
-                                    if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                                        cv.putText(frame, 'Hand close to pizza!', (50, 50),
-                                                   cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                    if (index_finger_x > x1 and index_finger_x < x2) and (
-                                            index_finger_y > y1 and index_finger_y < y2):
-                                        cv.putText(frame, 'Taking the pizza!', (50, 100),
-                                                   cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                for (x1, y1, x2, y2, conf) in detections_hotdog:
-                                    if (wrist_x > x1 and wrist_x < x2) and (wrist_y > y1 and wrist_y < y2):
-                                        cv.putText(frame, 'Hand close to hotdog!', (50, 50),
-                                                   cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                                    if (index_finger_x > x1 and index_finger_x < x2) and (
-                                            index_finger_y > y1 and index_finger_y < y2):
-                                        cv.putText(frame, 'Taking the hotdog!', (50, 100),
-                                                   cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-                                        ##############################
 
                 else:
                     if (x1 <= left and y1 <= top and x2 >= right and y2 >= bottom):
@@ -304,12 +444,14 @@ while True:
 
 
 
-    out.write(frame)
 
-    # cv.imshow("frame", frame)
-    #
-    # if cv.waitKey(1) & 0xFF == ord('q'):
-    #     break
+    for zone in shelf_zones:
+        cv.rectangle(frame, zone[0], zone[1], (0,175, 255), 2)
+    # out.write(frame)
+    cv.imshow("frame", frame)
+
+    if cv.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
 cv.destroyAllWindows()
